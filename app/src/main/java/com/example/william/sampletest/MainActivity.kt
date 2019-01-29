@@ -9,36 +9,58 @@ import android.content.pm.PackageManager
 import android.support.v4.content.ContextCompat
 import android.support.v4.app.ActivityCompat
 import android.widget.Toast
-import android.media.MediaRecorder
+//import android.media.MediaRecorder
 import android.os.Environment
+//import android.media.MediaRecorder.OnInfoListener
+import be.tarsos.dsp.AudioDispatcher
+import be.tarsos.dsp.io.TarsosDSPAudioFormat
 
 import be.tarsos.dsp.io.android.AudioDispatcherFactory
 import be.tarsos.dsp.onsets.OnsetHandler
 import be.tarsos.dsp.onsets.PercussionOnsetDetector
+import be.tarsos.dsp.writer.WriterProcessor
+import kotlinx.android.synthetic.main.activity_main.*
+
+
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.RandomAccessFile
 
 
 class MainActivity : AppCompatActivity() {
 
     private val MY_PERMISSIONS_RECORD_AUDIO = 1
+
     private val sampleRate = 44100
     private val sampleRateF = 44100f
     private val audioBufferSize = 2048
     private val bufferOverlap = 0
 
-//    private val sampleFile = File()
+    private lateinit var name:TextView
+    private lateinit var lugNumberText:TextView
+
+    private lateinit var sampleFile:RandomAccessFile
     private val lugNumber = 0
     private final val listenDuration = 2000
 
-    private val drumRecorder = MediaRecorder()
+
+    //Tarsos listening objects
+    private lateinit var listener:AudioDispatcher
+    private lateinit var drumDetector:PercussionOnsetDetector
+    private lateinit var outputFormat:TarsosDSPAudioFormat
+    private lateinit var writer:WriterProcessor
+
+//    private val drumRecorder = MediaRecorder()
+//    private var drumRecorderRunning = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        var name = findViewById<TextView>(R.id.temp_name)
+        name = findViewById<TextView>(R.id.temp_name)
         name.text = "Tap 1"
-
+        lugNumberText = findViewById(R.id.lugNum)
+        lugNumberText.text = lugNumber.toString()
         // sampling objects
         val session = Tuning()
         val sampler = DrumSampler()
@@ -46,35 +68,27 @@ class MainActivity : AppCompatActivity() {
 
         requestAudioPermissions()
 
-        //Tarsos listening objects
-        val listener = AudioDispatcherFactory.fromDefaultMicrophone(sampleRate, audioBufferSize, bufferOverlap)
 
-        // onset detection works
-        val threshold = 8.0
-        val sensitivity = 20.0
-        val drumDetector = PercussionOnsetDetector(
-            sampleRateF,
-            audioBufferSize,
-            OnsetHandler { time, salience -> runOnUiThread { drumStrikeDetected(name, time) } },
-            sensitivity,
-            threshold
-        )
 
-        //setup mediarecorder to record drum strike when onset detection triggers
-        setupMediaRecorder(lugNumber)
-
-//        val samples = Array<File>(8) { i->File(outputDir+String.format("/lug %d.3gp",i))}
+        //setup tarsos for onset detection and recording
+        setupRecording(lugNumber)
 
 
 
-        //start listening
-        listener.addAudioProcessor(drumDetector)
+
+
+
+
+
+
+
 
         val audioThread =  Thread(listener, "Drum Listener")
         audioThread.start()
+        audioThread.join(2000)
 
         //await drum strike, capture and pass to drumSampler?
-
+            //this gets done in
 
         //get result, strike again if necessary
 
@@ -92,35 +106,93 @@ class MainActivity : AppCompatActivity() {
 
         //if tuned, go to completion screen
 
-
-
-
-
-
     }
 
 
 
-    fun drumStrikeDetected(name:TextView, time: Double) {
+    fun drumStrikeDetected(time: Double) {
         //TODO latch drum strike and start listening.
+
         name.setText(time.toString())
+        name.setText(filesDir.list()[0].toString())
+//        if(!drumRecorderRunning) {
+//            drumRecorderRunning = true
+//            drumRecorder.start()
+//        }
     }
 
-    fun startRecording(lugNumber:Int){
 
+    fun setupRecording(lugNumber: Int){
+
+        listener = AudioDispatcherFactory.fromDefaultMicrophone(sampleRate, audioBufferSize, bufferOverlap)
+
+        // onset detection works
+        val threshold = 8.0
+        val sensitivity = 20.0
+        drumDetector = PercussionOnsetDetector(
+            sampleRateF,
+            audioBufferSize,
+            OnsetHandler { time, salience -> runOnUiThread { drumStrikeDetected(time) } },
+            sensitivity,
+            threshold
+        )
+
+        try {
+            sampleFile = RandomAccessFile(cacheDir.path+String.format("/lug%d.3gp",lugNumber), "rw")//"/lug%d.3gp")
+//            if(!sampleFile.exists())
+//                sampleFile.mkdir()
+
+            outputFormat = TarsosDSPAudioFormat(sampleRateF,16,1,true,false)
+            writer = WriterProcessor(outputFormat,sampleFile)
+        } catch(e:FileNotFoundException){
+            e.printStackTrace()
+        }
+
+        //start listening
+        listener.addAudioProcessor(drumDetector)
+        listener.addAudioProcessor(writer)
+        listener.run()
     }
 
-    fun setupMediaRecorder(lugNumber: Int){
-        val outputDir = Environment.getExternalStorageDirectory().absolutePath
-        val outputFile = String.format("/lug %d.3gp", lugNumber)
 
-        drumRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
-        drumRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
-        drumRecorder.setAudioEncoder(MediaRecorder.OutputFormat.AMR_NB)
-        drumRecorder.setOutputFile(outputDir+outputFile)
-        drumRecorder.setMaxDuration(listenDuration)
-    }
-
+//    fun setupMediaRecorder(lugNumber: Int){
+////        val outputDir = filesDir.absolutePath.toString()
+////        val outputFile = String.format("/lug%d.3gp", lugNumber)
+//
+//        try {
+//            sampleFile = File(cacheDir, "/lug%d.3gp")
+//            if(!sampleFile.exists())
+//                sampleFile.mkdir()
+//        } catch(e:FileNotFoundException){
+//            e.printStackTrace()
+//        }
+//
+//
+//        drumRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+//        drumRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
+//        drumRecorder.setAudioEncoder(MediaRecorder.OutputFormat.AMR_NB)
+//        drumRecorder.setOutputFile(sampleFile.absolutePath)
+//        drumRecorder.setMaxDuration(listenDuration)
+//
+//
+//
+//        try {
+//            drumRecorder.prepare()
+//        } catch (e: IllegalStateException) {
+//            e.printStackTrace()
+//        }
+//    }
+    //setup mediarecorder to record drum strike when onset detection triggers
+//        drumRecorder.setOnInfoListener(OnInfoListener { mr, what, extra ->
+//            if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) {
+//                name.setText("Recording Done")
+//                drumRecorder.reset()
+//                drumRecorderRunning = false
+//                setupMediaRecorder(lugNumber)
+//                name.setText("recording done")
+//
+//            }
+//        })
 
 
     private fun requestAudioPermissions() {
