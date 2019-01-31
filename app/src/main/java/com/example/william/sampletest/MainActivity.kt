@@ -22,9 +22,10 @@ import be.tarsos.dsp.pitch.PitchDetectionHandler
 import be.tarsos.dsp.pitch.PitchDetectionResult
 import be.tarsos.dsp.pitch.PitchProcessor
 
-
 import java.io.FileNotFoundException
 import java.io.RandomAccessFile
+import java.io.File
+import java.lang.Thread.sleep
 
 class MainActivity : AppCompatActivity() {
 
@@ -41,8 +42,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var sampleFile:RandomAccessFile
     private var lugNumber = 0
-    private final val listenDuration = 2000
-
+    private var numLugs = 8
+    private final val listenDuration = 2000L
+    private lateinit var sampleDirStr:String
     //Tarsos listening objects
     private lateinit var listener:AudioDispatcher
     private lateinit var drumDetector:PercussionOnsetDetector
@@ -58,6 +60,13 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        requestAudioPermissions()
+
+
+        sampleDirStr = cacheDir.path+"/samples"
+        refreshSampleDir()
+
+
         nameText = findViewById(R.id.temp_name)
         nameText.text = "Tap 1"
         lugNumberText = findViewById(R.id.lugNum)
@@ -69,16 +78,12 @@ class MainActivity : AppCompatActivity() {
         val session = Tuning()
         val sampler = DrumSampler()
 
-        requestAudioPermissions()
-
-        //Tarsos listening objects
         setupTarsos(lugNumber)
 
         audioThread =  Thread(listener, "Drum Listener")
         audioThread.start()
 
         //await drum strike, capture and pass to drumSampler?
-
 
         //get result, strike again if necessary
 
@@ -98,22 +103,39 @@ class MainActivity : AppCompatActivity() {
 
     }
 
+    private fun refreshSampleDir() {
+
+
+        if(!File(sampleDirStr).exists()) {
+            File(sampleDirStr).mkdir()
+        }
+
+        //delete contents of folder
+        val contents = File(sampleDirStr).listFiles()
+        if (contents != null) {
+            for (f in contents!!) {
+                f.delete()
+            }
+        }
+    }
 
 
     fun drumStrikeDetected(time: Double) {
-        //TODO latch drum strike and start listening.
+        //latch drum strike and start listening.
+        listener.removeAudioProcessor(drumDetector)
+        listener.addAudioProcessor(writer)
+
         nameText.text = String.format("Drum Onset time: %f.3",time)
         lugNumber++
         lugNumberText.text = String.format("Lug Number: %d",lugNumber)
-
-    }
-    fun frequencyDetected(frequency: Float, isPitched: Boolean) {
-//        val frequencyDouble = frequency.toDouble()
-        if(frequency!=-1.0f) {
-            val myString = "Frequency: $frequency"
-            frequencyText.text = myString //"Frequency:" +frequency.toString()
+        sleep(listenDuration)
+        writer.processingFinished()
+        listener.removeAudioProcessor(writer)
+        if(lugNumber<numLugs) {
+            listener.addAudioProcessor(drumDetector)
         }
-//        audioThread.
+        frequencyText.text = File(sampleDirStr).list()[lugNumber-1].toString()
+        setupTarsos(lugNumber)
     }
 
     fun setupTarsos(lugNumber:Int){
@@ -122,54 +144,39 @@ class MainActivity : AppCompatActivity() {
         // onset detection works
         val threshold = 10.0
         val sensitivity = 50.0
-        
-//        drumHandler = OnsetHandler {time, salience ->
-//            runOnUiThread {
-//                drumStrikeDetected(time)
-//            }
-//        }
 
-        drumDetector = PercussionOnsetDetector(
-            sampleRateF,
-            audioBufferSize,
+        drumDetector = PercussionOnsetDetector(sampleRateF, audioBufferSize,
             OnsetHandler { time, salience -> runOnUiThread { drumStrikeDetected(time) } },
-            sensitivity,
-            threshold
+            sensitivity,threshold
         )
-        
-//        pdh = PitchDetectionHandler(){
-//            result, audioEvent ->
-//            var pitchInHz = result.pitch
-//            runOnUiThread {
-//                frequencyDetected(pitchInHz)
+
+//        pitchProc = PitchProcessor(
+//            PitchProcessor.PitchEstimationAlgorithm.FFT_PITCH,
+//            sampleRateF,
+//            audioBufferSize,
+//            PitchDetectionHandler { res, e ->
+//                runOnUiThread { frequencyDetected(res.pitch)}//, res.isPitched) }
 //            }
-//        }
+//        )
 
-        pitchProc = PitchProcessor(
-            PitchProcessor.PitchEstimationAlgorithm.FFT_PITCH,
-            sampleRateF,
-            audioBufferSize,
-            PitchDetectionHandler { res, e ->
-                runOnUiThread { frequencyDetected(res.pitch, res.isPitched) }
+
+        var audioFileStr = sampleDirStr+String.format("/lug%d.wav",lugNumber)
+        //  try {
+
+            if(File(audioFileStr).exists()) {
+                File(audioFileStr).delete()
             }
-        )
 
-
-//        try {
-//            sampleFile = RandomAccessFile(cacheDir.path+String.format("/lug%d.wav",lugNumber), "rw")
-//            outputFormat = TarsosDSPAudioFormat(sampleRateF,16,1,true,false)
-//            writer = WriterProcessor(outputFormat,sampleFile)
+            sampleFile = RandomAccessFile(audioFileStr, "rw")
+            outputFormat = TarsosDSPAudioFormat(sampleRateF,16,1,false,false)
+            writer = WriterProcessor(outputFormat,sampleFile)
 //        } catch(e:FileNotFoundException){
 //            e.printStackTrace()
 //        }
 
-
         //start listening
-        listener.addAudioProcessor(pitchProc)
         listener.addAudioProcessor(drumDetector)
 
-        
-//        listener.run()
     }
     
 
@@ -213,5 +220,10 @@ class MainActivity : AppCompatActivity() {
 
         }
     }
+    private fun processFiles(){
+
+
+    }
+
 }
 
