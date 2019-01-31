@@ -6,6 +6,7 @@ import android.widget.TextView
 import android.Manifest
 
 import android.content.pm.PackageManager
+import android.os.Environment.getExternalStoragePublicDirectory
 import android.support.v4.content.ContextCompat
 import android.support.v4.app.ActivityCompat
 import android.widget.Toast
@@ -61,9 +62,11 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         requestAudioPermissions()
+        requestFilePermissions()
 
 
-        sampleDirStr = cacheDir.path+"/samples"
+        sampleDirStr = "/storage/self/primary/MovieMakerLib/samples"//("samples").path//+"/samples"//"//Internal storage/MovieMakerLib/samples"//cacheDir.path+"/samples"
+
         refreshSampleDir()
 
 
@@ -73,6 +76,7 @@ class MainActivity : AppCompatActivity() {
         lugNumberText.text = String.format("Lug Number: %d",lugNumber)
         frequencyText = findViewById(R.id.frequency)
         frequencyText.text = "freq detection not working"
+        frequencyText.text = sampleDirStr
 
         // sampling objects
         val session = Tuning()
@@ -135,13 +139,13 @@ class MainActivity : AppCompatActivity() {
             listener.addAudioProcessor(drumDetector)
         }
         frequencyText.text = File(sampleDirStr).list()[lugNumber-1].toString()
-        setupTarsos(lugNumber)
+        setupWriter()
     }
 
     fun setupTarsos(lugNumber:Int){
         listener = AudioDispatcherFactory.fromDefaultMicrophone(sampleRate, audioBufferSize, bufferOverlap)
 
-        // onset detection works
+        // setup onset detection
         val threshold = 10.0
         val sensitivity = 50.0
 
@@ -150,36 +154,26 @@ class MainActivity : AppCompatActivity() {
             sensitivity,threshold
         )
 
-//        pitchProc = PitchProcessor(
-//            PitchProcessor.PitchEstimationAlgorithm.FFT_PITCH,
-//            sampleRateF,
-//            audioBufferSize,
-//            PitchDetectionHandler { res, e ->
-//                runOnUiThread { frequencyDetected(res.pitch)}//, res.isPitched) }
-//            }
-//        )
 
+        //setup file recording
+        setupWriter()
 
-        var audioFileStr = sampleDirStr+String.format("/lug%d.wav",lugNumber)
-        //  try {
-
-            if(File(audioFileStr).exists()) {
-                File(audioFileStr).delete()
-            }
-
-            sampleFile = RandomAccessFile(audioFileStr, "rw")
-            outputFormat = TarsosDSPAudioFormat(sampleRateF,16,1,false,false)
-            writer = WriterProcessor(outputFormat,sampleFile)
-//        } catch(e:FileNotFoundException){
-//            e.printStackTrace()
-//        }
-
-        //start listening
+        // start drum strike detector
         listener.addAudioProcessor(drumDetector)
 
     }
-    
 
+    private fun setupWriter(){
+        var audioFileStr = sampleDirStr+String.format("/lug%d.wav",lugNumber)
+
+        if(File(audioFileStr).exists()) {
+            File(audioFileStr).delete()
+        }
+
+        sampleFile = RandomAccessFile(audioFileStr, "rw")
+        outputFormat = TarsosDSPAudioFormat(sampleRateF,16,1,false,false)
+        writer = WriterProcessor(outputFormat,sampleFile)
+    }
 
 
     private fun requestAudioPermissions() {
@@ -215,6 +209,45 @@ class MainActivity : AppCompatActivity() {
         } else if (ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+
+        }
+    }
+
+    private fun requestFilePermissions() {
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+
+            //When permission is not granted by user, show them message why this permission is needed.
+            if (ActivityCompat.shouldShowRequestPermissionRationale(
+                    this,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                )
+            ) {
+                Toast.makeText(this, "Please grant permissions to access external storage", Toast.LENGTH_LONG).show()
+
+                //Give user option to still opt-in the permissions
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                    1
+                )
+
+            } else {
+                // Show user dialog to grant permission to record audio
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                    1
+                )
+            }
+        } else if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
             ) == PackageManager.PERMISSION_GRANTED
         ) {
 
