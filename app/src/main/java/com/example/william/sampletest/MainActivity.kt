@@ -80,7 +80,7 @@ class MainActivity : AppCompatActivity() {
 
         // sampling objects
         val session = Tuning()
-        val sampler = DrumSampler()
+        val sampler = DrumAnalyzer()
 
         setupTarsos(lugNumber)
 
@@ -108,17 +108,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshSampleDir() {
-
+        //called on startup to create or empty the sample directory
 
         if(!File(sampleDirStr).exists()) {
             File(sampleDirStr).mkdir()
         }
 
         //delete contents of folder
-        val contents = File(sampleDirStr).listFiles()
-        if (contents != null) {
-            for (f in contents!!) {
-                f.delete()
+        else {
+            val contents = File(sampleDirStr).listFiles()
+            if (contents != null) {
+                for (f in contents!!) {
+                    f.delete()
+                }
             }
         }
     }
@@ -129,17 +131,31 @@ class MainActivity : AppCompatActivity() {
         listener.removeAudioProcessor(drumDetector)
         listener.addAudioProcessor(writer)
 
-        nameText.text = String.format("Drum Onset time: %f.3",time)
+        //nameText.text = String.format("Drum Onset time: %f.3",time)
         lugNumber++
         lugNumberText.text = String.format("Lug Number: %d",lugNumber)
+
+
+        //record for two seconds
         sleep(listenDuration)
+        //stop recording and detach writer
         writer.processingFinished()
         listener.removeAudioProcessor(writer)
+
         if(lugNumber<numLugs) {
             listener.addAudioProcessor(drumDetector)
+            setupWriter()
+        }else{
+            analyzeFrequencies()
         }
-        frequencyText.text = File(sampleDirStr).list()[lugNumber-1].toString()
-        setupWriter()
+        //frequencyText.text = File(sampleDirStr).list()[lugNumber-1].toString()
+
+        // reset writer for the next drum strike
+
+    }
+
+    private fun analyzeFrequencies() {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
     }
 
     fun setupTarsos(lugNumber:Int){
@@ -154,9 +170,8 @@ class MainActivity : AppCompatActivity() {
             sensitivity,threshold
         )
 
-
-        //setup file recording
-        setupWriter()
+        //setup file recording, to be added to listener on drum strike detection
+        setupWriter() // function is reused to write each subsequent file
 
         // start drum strike detector
         listener.addAudioProcessor(drumDetector)
@@ -252,10 +267,6 @@ class MainActivity : AppCompatActivity() {
         ) {
 
         }
-    }
-    private fun processFiles(){
-
-
     }
 
 }
